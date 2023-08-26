@@ -1,0 +1,48 @@
+on:
+  push:
+    branches:
+      - dev
+      - feature/*
+  pull_request:
+    types: [opened, edited, reopened]
+    branches:
+      - dev
+  workflow_dispatch:
+    inputs:
+      RUN_REFRESH:
+        type: string
+        default: true
+        description: "RUN_REFRESH; Should leave at default, only change this to false for special needs"
+
+concurrency: 
+  group: ${{ github.workflow }}
+
+jobs:
+  call_get_labels:
+    if: |
+      github.event_name == 'pull_request' || startsWith(github.ref_name, 'feature')
+    uses: krogertechnology/hw-gha-terraform/.github/workflows/ru-get-labels.yml@v1
+    secrets: inherit
+
+  dev_pr:
+    needs: call_get_labels
+    if: |
+      github.event_name == 'pull_request' || startsWith(github.ref_name, 'feature')
+    uses: krogertechnology/hw-gha-terraform/.github/workflows/ru-pr-check.yml@v1
+    with:
+      ENVIRONMENT: dev
+      RUN_REFRESH: ${{ !contains(fromJSON(needs.call_get_labels.outputs.LABELS), 'tf_skip_refresh') }}
+    secrets: inherit
+
+  dev_deploy:
+    if: |
+      github.event_name == 'push' && github.ref_name == 'dev'
+    uses: actions/checkout@v2
+
+    # Authenticating with Snowflake OAuth
+    - name: Set up Snowflake OAuth
+      uses: azure/login@v1
+      with:
+        client-id: ${{ secrets.SF_CLIENT_ID }}
+        client-secret: ${{ secrets.SF_CLIENT_SECRET }}
+        tenant-id: ${{ secrets.SF_TENANT_ID }}
